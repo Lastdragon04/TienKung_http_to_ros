@@ -26,10 +26,10 @@ class FastAPINode(Node):
     def __init__(self):
         super().__init__('fastapi_node')
 
-        self.declare_parameter('dist_path', "/home/zck/workspace/http_to_ros/dist")
+        self.declare_parameter('dist_path', "/path_to/http_to_ros/dist")
         self.dist_path = self.get_parameter('dist_path').get_parameter_value().string_value
 
-        self.declare_parameter('db_path', "/home/zck/workspace/http_to_ros/Memories/robot_control_v2.db")
+        self.declare_parameter('db_path', "/path_to/http_to_ros/Memories/robot_control_v2.db")
         self.db_path = self.get_parameter('db_path').get_parameter_value().string_value
 
         self.IIS=IIS(self.db_path)
