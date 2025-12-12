@@ -7,13 +7,13 @@
 步骤：
 1. 修改 src/robot_control/robot_control/http_control.py 中的数据库以及dist路径。
 
-2. cd 到src上一级 执行
+2. cd /path_to/http_to_ros
     ```bash
     colcon build --symlink-install
     ```
 3. 运行:
     ```bash
-    cd src上一级
+    cd /path_to/http_to_ros
     export ROS_DOMAIN_ID=0
     source install/setup.bash
     ros2 run robot_control http_conrtol
