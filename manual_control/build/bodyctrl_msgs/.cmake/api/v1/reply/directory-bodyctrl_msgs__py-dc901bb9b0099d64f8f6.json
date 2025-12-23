@@ -1,0 +1,14 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : [],
+		"files" : [],
+		"nodes" : []
+	},
+	"installers" : [],
+	"paths" : 
+	{
+		"build" : "bodyctrl_msgs__py",
+		"source" : "/home/zck/workspace/http_to_ros/manual_control/build/bodyctrl_msgs/bodyctrl_msgs__py"
+	}
+}

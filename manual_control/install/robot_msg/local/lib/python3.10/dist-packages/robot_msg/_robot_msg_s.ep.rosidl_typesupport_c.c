@@ -1,0 +1,1 @@
+/home/zck/workspace/http_to_ros/manual_control/build/robot_msg/rosidl_generator_py/robot_msg/_robot_msg_s.ep.rosidl_typesupport_c.c

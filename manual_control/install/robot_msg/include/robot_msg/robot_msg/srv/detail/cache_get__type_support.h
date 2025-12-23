@@ -1,0 +1,1 @@
+/home/zck/workspace/http_to_ros/manual_control/build/robot_msg/rosidl_generator_c/robot_msg/srv/detail/cache_get__type_support.h

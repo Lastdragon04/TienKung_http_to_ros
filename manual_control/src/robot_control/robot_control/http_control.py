@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List,Optional
+from typing import List,Optional,Union,Dict
 from pydantic import BaseModel
 import uvicorn
 import asyncio
@@ -14,6 +14,8 @@ import threading
 from .db.crud import InvertedIndexSearcher as IIS
 from collections import defaultdict
 from bodyctrl_msgs.msg import SetMotorPosition,CmdSetMotorPosition
+from std_msgs.msg import Header
+from sensor_msgs.msg import JointState
 import json
 import time
 import fastapi_cdn_host
@@ -26,10 +28,10 @@ class FastAPINode(Node):
     def __init__(self):
         super().__init__('fastapi_node')
 
-        self.declare_parameter('dist_path', "/path_to/http_to_ros/dist")
+        self.declare_parameter('dist_path', "/home/zck/workspace/http_to_ros/dist")
         self.dist_path = self.get_parameter('dist_path').get_parameter_value().string_value
 
-        self.declare_parameter('db_path', "/path_to/http_to_ros/Memories/robot_control_v2.db")
+        self.declare_parameter('db_path', "/home/zck/workspace/http_to_ros/Memories/robot_control_v2.db")
         self.db_path = self.get_parameter('db_path').get_parameter_value().string_value
 
         self.IIS=IIS(self.db_path)
@@ -38,8 +40,14 @@ class FastAPINode(Node):
         self.arm_pub = self.create_publisher(CmdSetMotorPosition, '/arm/cmd_pos', 10)
         self.waist_pub = self.create_publisher(CmdSetMotorPosition, '/waist/cmd_pos', 10)
         self.leg_pub = self.create_publisher(CmdSetMotorPosition, '/leg/cmd_pos', 10)
-        self.pub={"head":self.head_pub,"arm":self.arm_pub ,"waist":self.waist_pub,"leg":self.leg_pub}
-        self.parts_name={"arm":"手臂","leg":"腿","waist":"腰","head":"头"} 
+
+        self.inspire_hand_left = self.create_publisher(JointState, '/inspire_hand/ctrl/left_hand', 10)
+        self.inspire_hand_right = self.create_publisher(JointState, '/inspire_hand/ctrl/right_hand', 10)
+
+
+        self.ALLOWED_PARTS={"arm":[],"head":[]}
+        self.pub={"head":self.head_pub,"arm":self.arm_pub ,"waist":self.waist_pub,"leg":self.leg_pub,"ins_left_hand":self.inspire_hand_left,"ins_right_hand":self.inspire_hand_right}
+        self.parts_name={"arm":"手臂","leg":"腿","waist":"腰","head":"头","ins_left_hand":"左手（因时）","ins_right_hand":"右手（因时）"} 
         self.declare_parameter('server_port', 3754)
         self.server_port = self.get_parameter('server_port').get_parameter_value().integer_value
         self.circulate=False
@@ -63,29 +71,108 @@ class FastAPINode(Node):
             self.pub[part].publish(msg)
             return True
         except Exception as e:
-            self.get_logger().error(f"发布失败: {e}")
+            self.get_logger().error(f"ERROR:part {e} is not exit")
             return False
 
-    def _create_msg(self,command,part='arm'):
-        """创建关节控制消息，严格匹配SetMotorPosition类型要求"""
-        msg = CmdSetMotorPosition()
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = part
-        msg.cmds=[]
-        for data in command: 
-            # 构建电机控制指令（所有字段均为正确类型）
-            motor_cmd = SetMotorPosition()
-            motor_cmd.name = data.name_index                  # 关节ID（整数，符合name字段要求）
-            motor_cmd.pos = float(data.value)                 # 位置（float类型）
-            motor_cmd.spd = data.speed                       # 速度（float类型）
-            motor_cmd.cur = 5.0                        # 电流（float类型，已修复）
-            msg.cmds.append(motor_cmd)
-        return msg
+    # def _create_msg(self,command,part='arm'):
+    #     """创建关节控制消息，严格匹配SetMotorPosition类型要求"""
+    #     if part in ["ins_left_hand","ins_right_hand"]:
+    #         msg = JointState()
+    #         msg.header.stamp = self.get_clock().now().to_msg()
+    #         msg.header.frame_id = part
+    #         if part=="ins_left_hand":
+    #             msg.name=[str(item.name_index-70) for item in command]
+    #         if part=="ins_right_hand":
+    #             msg.name=[str(item.name_index-80) for item in command]
+    #         msg.position=[item.value for item in command]
+    #         return msg
+
+    #     elif part in ["arm","leg","waist","head"]:
+    #         msg = CmdSetMotorPosition()
+    #         msg.header.stamp = self.get_clock().now().to_msg()
+    #         msg.header.frame_id = part
+    #         msg.cmds=[]
+    #         for data in command: 
+    #             # 构建电机控制指令（所有字段均为正确类型）
+    #             motor_cmd = SetMotorPosition()
+    #             motor_cmd.name = data.name_index                  # 关节ID（整数，符合name字段要求）
+    #             motor_cmd.pos = float(data.value)                 # 位置（float类型）
+    #             motor_cmd.spd = data.speed                       # 速度（float类型）
+    #             motor_cmd.cur = 5.0                        # 电流（float类型，已修复）
+    #             msg.cmds.append(motor_cmd)
+    #     return msg
+
+    def _create_msg(self, command, part: str = 'arm') -> Union[JointState, CmdSetMotorPosition]:
+        """创建关节控制消息，严格匹配SetMotorPosition类型要求
+        
+        Args:
+            command: 电机控制指令列表
+            part: 控制部位，支持 "arm", "leg", "waist", "head", "ins_left_hand", "ins_right_hand"
+        
+        Returns:
+            对应类型的控制消息
+        """
+        # 创建消息头
+        header = Header()
+        header.stamp = self.get_clock().now().to_msg()
+        header.frame_id = part
+        
+        # 手柄控制部分
+        if part in ["ins_left_hand", "ins_right_hand"]:
+            msg = JointState()
+            msg.header = header
+            
+            # 使用字典映射而不是硬编码偏移量
+            offset_map = {
+                "ins_left_hand": 70,
+                "ins_right_hand": 80
+            }
+            offset = offset_map[part]
+            
+            msg.name = [str(item.name_index - offset) for item in command]
+            
+            # 验证并设置position值
+            positions = []
+            for item in command:
+                value = float(item.value)
+                if value < 0.0 or value > 1.0:
+                    raise ValueError(
+                        f"Position value {value} for part '{part}' is out of range [0.0, 1.0]. "
+                        f"Command item: name_index={item.name_index}, value={item.value}"
+                    )
+                positions.append(value)
+            
+            msg.position = positions
+            return msg
+        
+        # 身体部位控制部分
+        elif part in ["arm", "leg", "waist", "head"]:
+            msg = CmdSetMotorPosition()
+            msg.header = header
+            msg.cmds = []
+            
+            for data in command:
+                motor_cmd = SetMotorPosition()
+                motor_cmd.name = data.name_index  # 关节ID（整数）
+                motor_cmd.pos = float(data.value)  # 位置（float类型）
+                motor_cmd.spd = float(data.speed)  # 速度（float类型）
+                motor_cmd.cur = float(data.current) # 电流（float类型，考虑设为可配置参数）
+                msg.cmds.append(motor_cmd)
+            
+            return msg
+        
+        else:
+            raise ValueError(f"Unsupported part: {part}")
 
     def make_action_simple(self,cmd):
-        for part_name,data in cmd.items():
+        try:
+            for part_name,data in cmd.items():
                 message=self._create_msg(data,part=part_name)
+                self.get_logger().info(f"发布:{part_name}|{str(message)}")
                 self._publish(message,part_name)
+            return True
+        except Exception as e:
+            return False
 
     def get_db(self)->IIS:
         return IIS(self.db_path)
@@ -106,6 +193,7 @@ class FastAPINode(Node):
             speed: float
             part: str
             name_index: int
+            current:float
 
         class GroupRunModel(BaseModel):
             group_id:int
@@ -122,6 +210,10 @@ class FastAPINode(Node):
             seq:int
             command:List[CommandModel]
 
+        class ResetCurrentModel(BaseModel):
+            control_ids:List[int]
+            parts:List[str]
+
         @self.app.get("/")
         async def index():
             with open(dist_path + "/index.html", "r") as file:
@@ -130,15 +222,17 @@ class FastAPINode(Node):
 
         @self.app.get("/control/get_all")
         async def get_all_control(robot_type:int=Query(...),db:IIS=Depends(self.get_db)):
-            print(robot_type,type(robot_type))
             try:
                 if robot_type == 2:
                     robot_type="天轶2.0Pro"
                 if robot_type == 1:
                     robot_type="天工2.0Plus"
                 part=db.get_allmodules(robot_type)
+                if robot_type=="天工2.0Plus":
+                    part.remove("leg")
                 motors=db.get_all_motor_config(robot_type)
                 part_names=map_part(self.parts_name,part)
+                # print(motors,part_names)
                 return {"topic":part,"motors":motors,"part_names":part_names}
             except Exception as e:
                 print(e)
@@ -146,12 +240,14 @@ class FastAPINode(Node):
 
         @self.app.post("/control/run")
         def control_run(cmd:List[CommandModel],db:IIS=Depends(self.get_db)):
-            result = defaultdict(list)
+            commands = defaultdict(list)
             for item in cmd:
-                result[item.part].append(item)
-            print(result)
-            self.make_action_simple(result)
-            return {"message":"执行完毕"}
+                commands[item.part].append(item)
+            result=self.make_action_simple(commands)
+            if result:
+                return {"message":"执行完毕"}
+            else:
+                return {"message":"执行失败"}
 
         @self.app.post("/action_group/add")
         def action_group_add(name:str=Form(...),action_callback:str=Form(None),description:str=Form(...),db:IIS=Depends(self.get_db)):
@@ -194,7 +290,7 @@ class FastAPINode(Node):
             return {"action":action}
 
         @self.app.post("/action/run")
-        def action_run(data:List[ActionRunModel],db:IIS=Depends(self.get_db)):
+        def action_run(data: Dict[str, List[CommandModel]],db:IIS=Depends(self.get_db)):
             print(data)
             return {"message":"success"}
 
@@ -217,6 +313,31 @@ class FastAPINode(Node):
                 if self.circulate==False:
                     break
             return {"message":"执行完毕"}
+
+        @self.app.post("/control/reset_current")
+        def reset_current(form:ResetCurrentModel,db:IIS=Depends(self.get_db)):
+            if len(form.parts)!=len(form.control_ids):
+                return "parts与control_ids长度不匹配"
+            for index in range(len(form.parts)):
+                if form.parts[index] not in list(self.ALLOWED_PARTS.keys()):
+                    return {"message":"当前仅支持手臂和头部,其他部位恕不支持"}
+                self.ALLOWED_PARTS[form.parts[index]].append(form.control_ids[index])
+            header = Header()
+            header.stamp = self.get_clock().now().to_msg()
+            for part,data in self.ALLOWED_PARTS.items():
+                header.frame_id = part
+                msg = CmdSetMotorPosition()
+                msg.header = header
+                msg.cmds = []
+                for control_id in data:
+                    motor_cmd = SetMotorPosition()
+                    motor_cmd.name = control_id  # 关节ID（整数）
+                    motor_cmd.pos = 0.0  # 位置（float类型）
+                    motor_cmd.spd = 0.0  # 速度（float类型）
+                    motor_cmd.cur = 0.0  # 电流（float类型，考虑设为可配置参数）
+                    msg.cmds.append(motor_cmd)
+                self.pub[part].publish(msg)
+            return {"message":"success"}
 
         self.app.mount("/static", StaticFiles(directory=dist_path), name="static")
         templates = Jinja2Templates(directory=dist_path+"/templates")

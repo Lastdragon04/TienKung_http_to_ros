@@ -1,0 +1,1 @@
+/home/zck/workspace/http_to_ros/manual_control/build/robot_msg/rosidl_typesupport_fastrtps_cpp/robot_msg/msg/detail/imu_gyro__rosidl_typesupport_fastrtps_cpp.hpp

@@ -1,0 +1,1 @@
+/home/zck/workspace/http_to_ros/manual_control/build/bodyctrl_msgs/rosidl_generator_c/bodyctrl_msgs/msg/detail/cmd_set_motor_position__struct.h

@@ -10,6 +10,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const add_action_group_modal=document.getElementById(`add-action-group-modal`);
     const add_action_modal= document.getElementById(`add-action-modal`);
     const action_group_details=document.getElementById('action_group_details');
+    const default_current=3.0
+    const default_speed=0.1
     const card_strech_time=1000;
     const protocol_choice=["请选择协议","邱协议","老丁协议","步进协议"];
     const ip = "192.168.31.40"
@@ -459,7 +461,8 @@ document.addEventListener('DOMContentLoaded', () => {
         })
         container.addEventListener("change",(event=>{
             if (event.target && event.target.classList.contains("location_all_select")){
-                const checkboxes=event.target.parentNode.parentNode.querySelectorAll('input[type="checkbox"]')
+                const checkboxes=event.target.parentNode.parentNode.parentNode.querySelectorAll('input[type="checkbox"]')
+                console.log(checkboxes)
                 if(event.target.checked){
                     checkboxes.forEach(function(checkbox) {
                         checkbox.checked=true
@@ -913,14 +916,20 @@ document.addEventListener('DOMContentLoaded', () => {
             data:{"robot_type":$(`#robot_type_select`).val()},
             success: function(response) { // 请求成功时的回调函数
                     response.topic.forEach((data,index)=>{
-
                         let control_bar=""
                         $(`#control_center`).append(
                             `<div class="contorl-card" id="part_${data}">
-                                <div class="card_title">
-                                    <label for="location_all_select_${data}">${response.part_names[index]}</label><input type="checkbox" id="location_all_select_${data}" class="location_all_select"/>
+                                <div class="card_title" style="display:flex;flex-direction:row;justify-content: space-between;">
+                                    <div>
+                                        <label for="location_all_select_${data}">${response.part_names[index]}</label><input type="checkbox" id="location_all_select_${data}" class="location_all_select"/>
+                                    </div>
+                                    <div style="font-size: initial;display: flex;gap: 60px;padding-top: 30px;">
+                                        <span>位置</span>
+                                        <span>速度</span>
+                                        <span>电流</span>
+                                    </div>
                                 </div>
-                                <hr>
+                                <hr style="margin-top:0">
                             </div>`
                         )
                     });
@@ -935,8 +944,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             <input type="range" class="form-control-range" id="control-${data[2]}" min="${data[7]}" max="${data[6]}" value="${data[5]}" step="0.001" canid="${data[4]}" module="${data[3]}" name_index="${data[2]}" title=""/>
                             <input type="number" class="control-position-input" style="width:10%" value="${data[5]}" id="control-position-${data[2]}" autocomplete="off" step="0.01"  canid="${data[4]}"  module="${data[3]}" name_index="${data[2]}"
                                 oninput="if(value>${data[6]})value=${data[6]};if(value<${data[7]}) value=${data[7]}" title=""/>
-                            <label for="control-speed-${data[2]}" style="width:8%;text-align:right">速度:</label>
-                            <input type="number" style="width:10%" value="0.8" id="control-speed-${data[2]}" min="0" autocomplete="off" step="10"/>
+                            <input type="number" style="width:10%" value="${default_speed}" id="control-speed-${data[2]}" min="0" autocomplete="off" step="0.1"/>
+                            <input type="number" style="width:10%" value="${default_current}" id="control-current-${data[2]}" min="0" autocomplete="off" step="0.1"/>
                         </div>`
                         $(`#part_${data[3]}`).append(control_bar)
                     });
@@ -1032,21 +1041,104 @@ document.addEventListener('DOMContentLoaded', () => {
         return data
     }
     
-    function standar_get_control_form(){
-        const control_id_checkbox=$('input[type="checkbox"][id^="control-checkbox-"]').filter(':checked');
-        let commands=[]
+    function standar_get_control_form() {
+        const control_id_checkbox = $('input[type="checkbox"][id^="control-checkbox-"]').filter(':checked');
+        let commands = [];
+        let hasError = false;
+        let errorMessage = "";
+        
         control_id_checkbox.each(function() {
-            let data={}
-            const motor_id=$(this).attr('id').split("-")[2]
-            data["name_index"]=parseInt($(this).attr("name_index"))
-            data["value"]=parseFloat($(`#control-position-${motor_id}`).val())
-            data["speed"]=parseFloat($(`#control-speed-${motor_id}`).val())
-            data["part"]=$(this).attr('module')
-            console.log("`````````````````````")
-            console.log(data["part"])
-            commands.push(data)
-        })
-        return commands
+            if (hasError) return false; // 如果已经有错误，停止继续处理
+            
+            let data = {};
+            const motor_id = $(this).attr('id').split("-")[2];
+            const part = $(this).attr('module');
+            
+            // 获取原始输入值
+            const valueStr = $(`#control-position-${motor_id}`).val();
+            const speedStr = $(`#control-speed-${motor_id}`).val();
+            const currentStr = $(`#control-current-${motor_id}`).val();
+            
+            // 验证 value
+            if (!isValidNumber(valueStr)) {
+                hasError = true;
+                errorMessage = `模块 ${part} (ID: ${motor_id}) 的位置值 "${valueStr}" 不是有效的数字`;
+                return false;
+            }
+            
+            // 验证 speed
+            if (!isValidNumber(speedStr)) {
+                hasError = true;
+                errorMessage = `模块 ${part} (ID: ${motor_id}) 的速度值 "${speedStr}" 不是有效的数字`;
+                return false;
+            }
+            
+            // 验证 speed 不能为0或负数
+            const speed = parseFloat(speedStr);
+            if (speed <= 0) {
+                hasError = true;
+                errorMessage = `模块 ${part} (ID: ${motor_id}) 的速度值必须大于0`;
+                return false;
+            }
+
+            const current = parseFloat(currentStr);
+            if (current <= 0) {
+                hasError = true;
+                errorMessage = `模块 ${part} (ID: ${motor_id}) 的电流值必须大于0`;
+                return false;
+            }
+            
+            // 如果所有验证都通过，则添加到命令列表
+            data["name_index"] = parseInt($(this).attr("name_index"));
+            data["value"] = parseFloat(valueStr);
+            data["speed"] = speed;
+            data["part"] = part;
+            data["current"]=current
+            
+            commands.push(data);
+        });
+        
+        // 如果有错误，显示弹窗并返回空数组
+        if (hasError) {
+            showErrorAlert(errorMessage);
+            return [];
+        }
+        
+        return commands;
+    }
+
+    // 验证是否为有效数字的函数
+    function isValidNumber(str) {
+        if (str === "" || str === null || str === undefined) {
+            return false;
+        }
+        
+        // 检查是否为数字（包括小数和负数）
+        const num = parseFloat(str);
+        return !isNaN(num) && isFinite(str);
+    }
+
+    // 显示错误弹窗的函数
+    function showErrorAlert(message) {
+        // 使用浏览器原生alert
+        alert("输入错误: " + message);
+        
+        // 或者使用自定义模态框（如果你有UI框架）
+        // 示例：使用Bootstrap模态框
+        /*
+        $('#errorModal .modal-body').text(message);
+        $('#errorModal').modal('show');
+        */
+        
+        // 或者使用SweetAlert2（如果已引入）
+        /*
+        Swal.fire({
+            icon: 'error',
+            title: '输入错误',
+            text: message,
+            confirmButtonText: '确定'
+        });
+        */
     }
 
     $("#motor_alignment").click(function (e) { 
@@ -1083,6 +1175,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return 
         }
         const commands=standar_get_control_form()
+        if(commands==false){
+            return
+        }
         $.ajax({
             type:"post",
             url:"/control/run",
@@ -1536,27 +1631,36 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     })
 
-    $(`#set_offset`).click(function(){
-        const check_boxes=$(`input[type=checkbox][id^="control-checkbox-"]`).filter(':checked');
-        let form={}
-        form["data"]=[]
-        for (let index = 0; index < check_boxes.length; index++) {
-            let data={}
-            const control_id=check_boxes[index].id.split("-")[2]
-            data["control_id"]=parseInt(control_id)
-            data["offset"]=$(`#control-position-${String(control_id)}`).val()
-            form["data"].push(data)
+$(`#reset_current`).click(function(){
+    const check_boxes = $(`input[type=checkbox][id^="control-checkbox-"]`).filter(':checked');
+    let nonArmModules = [];
+    let form = {"control_ids": [], "parts": []}
+    
+    // 首先检查所有选中的复选框
+    for (let index = 0; index < check_boxes.length; index++) {
+        const checkbox = check_boxes[index];
+        const module = $(checkbox).attr('module');
+        const control_id = checkbox.id.split("-")[2]; // control_id 是一个字符串，例如 "123"
+        
+        form["control_ids"].push(parseInt(control_id)); // 推送整数 123
+        form["parts"].push(module);                 // <--- 修改这里：直接推送字符串 "123"
+    }
+    
+    $.ajax({
+        type: "post",
+        url: "/control/reset_current",
+        contentType: "application/json",
+        data: JSON.stringify(form),
+        success: function (response) {
+            alert(response.message)
+        },
+        // 强烈建议添加错误处理，这样可以看到服务器返回的详细错误信息
+        error: function(jqXHR, textStatus, errorThrown) {
+            console.error("请求失败:", jqXHR.responseText);
+            alert("请求失败，请检查控制台获取详细信息。\n" + jqXHR.responseText);
         }
-        $.ajax({
-            type: "post",
-            url: "/control/set_offset",
-            contentType: "application/json",
-            data: JSON.stringify(form),
-            success: function (response) {
-                refresh_control_center_page()
-            }
-        })
     })
+})
 
     $(`#motor_alignment_with_one_click`).click(function(){
         $(`#align_button_wait`).css("display","block")

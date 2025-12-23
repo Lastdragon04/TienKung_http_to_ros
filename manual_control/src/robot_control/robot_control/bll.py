@@ -34,7 +34,7 @@ def caluate_motor_position(angle,file_path):
     
 def map_part(mapping,original_list):
     for topic in original_list:
-        if topic not in ["arm","leg","waist","head"]:
+        if topic not in ["arm","leg","waist","head","ins_left_hand","ins_right_hand"]:
             return "shit"
     # 使用列表推导式进行映射转换
     return [mapping[item] for item in original_list]

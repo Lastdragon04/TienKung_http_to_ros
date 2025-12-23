@@ -1,0 +1,1 @@
+/home/zck/workspace/http_to_ros/manual_control/build/robot_interfaces/rosidl_generator_py/robot_interfaces/action/__init__.py

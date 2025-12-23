@@ -1,0 +1,1 @@
+/home/zck/workspace/http_to_ros/manual_control/build/robot_interfaces/rosidl_generator_cpp/robot_interfaces/msg/detail/sensor_state__type_support.hpp

@@ -13,11 +13,12 @@ def map_can_to_body(mapping,original_list):
     return [mapping[item] for item in original_list]
 
 class Command:
-    def __init__(self, name_index=None, value=None, speed=None, part=None):
+    def __init__(self, name_index=None, value=None, speed=None, part=None,current=None):
         self.name_index = name_index if name_index is not None else 0
         self.value = value if value is not None else 0.0
         self.speed = speed if speed is not None else 0.0
         self.part = part if part is not None else ""
+        self.current = current if current is not None else 0.0
 
 class ControlBar(Command):
     def __init__(self):
